@@ -70,6 +70,15 @@ class Box {
         return new Rect(x1, x2, y1, y2)
     }
 
+    addVolume(box: Box) {
+        let segments: Segment[] = []
+        for (let i = 0; i < 3; i++) {
+            segments.push(new Segment(Math.min(this.segment3D(i).a, box.segment3D(i).a),
+                Math.max(this.segment3D(i).b, box.segment3D(i).b)))
+        }
+        return new Box(segments)
+    }
+
     likeBox(box: Box) {
         for (let i = 0; i < 3; i++) if (this.segment3D(i).l / box.segment3D(i).l > likePercent / 100)
             return false
@@ -106,6 +115,15 @@ class Box {
         } else {
             this.b = {width: segments.width, height: segments.height, depth: segments.depth}
         }
+    }
+
+    copy() {
+        if (this.p) return new Box([this.segment3D(0), this.segment3D(1), this.segment3D(2)])
+        return new Box({
+            width: this.b.width,
+            height: this.b.height,
+            depth: this.b.depth
+        })
     }
 
     get V() {
@@ -221,6 +239,53 @@ class Cell {
             return true
         }
         return false
+    }
+
+    distribute(order: Order) {
+        this.putFirst(order)
+        while (order.fillIndex < order.boxList.length) {
+            let box = order.boxList[order.fillIndex]
+            // rotation history
+            let rHist: Box[] = []
+            let success: Box[] = []
+            for (let i = 0; i < 6; i++) {
+                box.rotateIndex = i
+                // check like in history
+                let cont = false
+                for (let b of rHist) {
+                    cont = b.likeBox(box)
+                    if (cont) break
+                }
+                if (cont) continue
+                rHist.push(box.copy())
+                box.setAmbit(order, this.spaces)
+                box.ambit.forEach((p) => {
+                    box.p = p
+                    if (this.isBoxSet(box, order)) success.push(box.copy())
+                })
+            }
+            // if received success placements
+            if (success.length) {
+                // select case with minimal total volume
+                let vBox = order.boxList[0]
+                for (let i = 1; i < order.fillIndex; i++) {
+                    vBox.addVolume(order.boxList[i])
+                }
+                let volume = vBox.addVolume(success[0]).V
+                let bestI = 0
+                // search for min
+                for (let i = 1; i < success.length; i++) {
+                    let v = vBox.addVolume(success[i]).V
+                    if (v < volume) {
+                        volume = v
+                        bestI = i
+                    }
+                }
+                order.boxList[order.fillIndex++] = success[bestI]
+            } else {
+                order.outsideCell.push(order.boxList.splice(order.fillIndex, 1)[0])
+            }
+        }
     }
 
 }

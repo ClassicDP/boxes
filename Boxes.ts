@@ -64,11 +64,11 @@ class Box {
     }
 
     base(): Rect {
-        let x1 = this.segment3D('x').a
-        let x2 = this.segment3D('x').b
-        let y1 = this.segment3D('z').a
-        let y2 = this.segment3D('z').b
-        return new Rect(x1, x2, y1, y2)
+        return new Rect(
+            this.segment3D('x').a,
+            this.segment3D('z').a,
+            this.segment3D('x').b,
+            this.segment3D('z').b)
     }
 
     addVolume(box: Box) {
@@ -86,10 +86,10 @@ class Box {
         return true
     }
 
-    setAmbit(order: Order, space: number) {
+    setAmbit(order: Order, cell: Cell, space: number) {
         this.ambit = []
         // levels of support for put box
-        let yList = [this.segment3D('y').b]
+        let yList = [cell.cellBox.segment3D('y').b]
         for (let i = 0; i < order.fillIndex; i++) {
             yList.push(order.boxList[i].segment3D('y').b)
         }
@@ -216,29 +216,28 @@ class Cell {
 
     putFirst(order: Order) {
         let area = 0
-        let index = -1
         let box = order.boxList[0]
         if (!box) return false
+        let bestBox
         do {
-            for (let i = 0; i < 6; i++) {
-                box.rotateIndex = i
+            for (box.rotateIndex = 0; box.rotateIndex < 6; box.rotateIndex++) {
                 if (area < box.base().area) {
                     box.p = new Point(this.cellBox.segment3D('x').a + this.spaces,
                         this.cellBox.segment3D('y').b - box.segment3D('y').l,
                         this.cellBox.segment3D('z').a + this.spaces)
                     if (!this.isBoxInside(box)) continue
                     area = box.base().area
-                    index = i
+                    bestBox = box.copy()
                 }
             }
-            if (index < 0) {
+            if (!bestBox) {
                 let x = order.boxList.shift()
                 if (x) order.outsideCell.push(x)
             }
-        } while (index < 0 && order.boxList.length)
-        if (index >= 0) {
+        } while (!bestBox && order.boxList.length)
+        if (bestBox) {
             order.fillIndex = 1
-            box.rotateIndex = index
+            order.boxList[0] = bestBox
             return true
         }
         return false
@@ -261,11 +260,16 @@ class Cell {
                 }
                 if (cont) continue
                 rHist.push(box.copy())
-                box.setAmbit(order, this.spaces)
-                box.ambit.forEach((p) => {
-                    box.p = p
-                    if (this.isBoxSet(box, order)) success.push(box.copy())
-                })
+                for (let j=0; j< order.fillIndex; j++) {
+                    let setBox = order.boxList[j]
+                    setBox.setAmbit(order, this, this.spaces)
+                    setBox.ambit.forEach((p) => {
+                        box.p = p
+                        box.p.y-=box.segment3D('y').l
+                        if (this.isBoxSet(box, order)) success.push(box.copy())
+                    })
+                }
+
             }
             // if received success placements
             if (success.length) {
@@ -304,7 +308,7 @@ for (let i=0; i<5; i++) {
         width: rand(10,150),height: rand(10,150), depth: rand(10,150)})
     order.boxList.push(box)
 }
-cell.putFirst(order)
+
 cell.distribute(order)
 console.log(order)
 console.log()

@@ -41,9 +41,10 @@ class Segment {
 }
 
 const rotate = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]
-const banRotatePercent = 15
+const likePercent = 5
 
 type WHD = { width: number, height: number, depth: number }
+const dEnum: { [key in number | 'x' | 'y' | 'z']: number } = {"0": 0, "1": 1, "2": 2, "x": 0, "y": 1, "z": 2}
 
 class Box {
     b: WHD
@@ -51,38 +52,48 @@ class Box {
     rotateIndex: number = 0 // 0..5
     ambit: Point[]
 
+
     // 0:x, 1:y, 2:z
-    segment3D(d: number): Segment | undefined {
-        if (!this.p) return undefined
+    segment3D(d: number | 'x' | 'y' | 'z'): Segment {
+        d = dEnum[d]
         d = rotate[this.rotateIndex][d]
-        if (d == 0) return new Segment(this.p.x, this.p.x + this.b.width)
-        if (d == 1) return new Segment(this.p.y, this.p.y + this.b.height)
-        if (d == 2) return new Segment(this.p.z, this.p.z + this.b.depth)
+        if (d == 0) return new Segment(this.p?.x ?? 0, (this.p?.x ?? 0) + this.b.width)
+        if (d == 1) return new Segment(this.p?.y ?? 0, (this.p?.y ?? 0) + this.b.height)
+        return new Segment(this.p?.z ?? 0, (this.p?.z ?? 0) + this.b.depth)
     }
 
-    base(): Rect | undefined {
-        let x1 = this.segment3D(0)?.a
-        let x2 = this.segment3D(0)?.b
-        let y1 = this.segment3D(2)?.a
-        let y2 = this.segment3D(2)?.b
-        if (x1 == undefined || x2 == undefined || y1 == undefined || y2 == undefined) return undefined
+    base(): Rect {
+        let x1 = this.segment3D('x').a
+        let x2 = this.segment3D('x').b
+        let y1 = this.segment3D('z').a
+        let y2 = this.segment3D('z').b
         return new Rect(x1, x2, y1, y2)
     }
 
+    likeBox(box: Box) {
+        for (let i = 0; i < 3; i++) if (this.segment3D(i).l / box.segment3D(i).l > likePercent / 100)
+            return false
+        return true
+    }
 
-    setAmbit(order: Order) {
+    setAmbit(order: Order, space: number) {
         this.ambit = []
         // levels of support for put box
-        let yList = []
+        let yList = [this.segment3D('y').b]
         for (let i = 0; i < order.fillIndex; i++) {
-            yList.push(order.boxList[i].segment3D(1)!.b)
+            yList.push(order.boxList[i].segment3D('y').b)
         }
-        this.ambit.push(new Point(this.segment3D(0)!.a, this.segment3D(1)!.a, this.segment3D(2)!.a))
+        this.ambit.push(new Point(this.segment3D('x').a + space,
+            this.segment3D('y').a,
+            this.segment3D('z').a + space))
         yList.forEach((y) => {
-            this.ambit.push(new Point(this.segment3D(0)!.b, y, this.segment3D(2)!.a))
-            this.ambit.push(new Point(this.segment3D(0)!.a, y, this.segment3D(2)!.b))
+            this.ambit.push(new Point(
+                this.segment3D('x').b + space, y, this.segment3D('z').a + space))
+            this.ambit.push(new Point(
+                this.segment3D('x').a + space, y, this.segment3D('z').b + space))
         })
     }
+
 
     constructor(segments: Segment[] | WHD) {
         if (segments instanceof Array) {
@@ -102,7 +113,8 @@ class Box {
     }
 
     get maxArea() {
-        return Math.max(this.b.height * this.b.width, this.b.height * this.b.depth, this.b.depth * this.b.width)
+        return Math.max(
+            this.b.height * this.b.width, this.b.height * this.b.depth, this.b.depth * this.b.width)
     }
 }
 
@@ -159,10 +171,10 @@ class Order {
 
 class Cell {
     constructor(
-        public cellBox: Box, spaces: number = 2) {
+        public cellBox: Box, public spaces: number = 5) {
     }
 
-    checkPlacing(box: Box) {
+    isBoxInside(box: Box) {
         // if box wholly in cell
         return crossBoxes(box, this.cellBox)?.V == box.V
     }
@@ -172,13 +184,13 @@ class Cell {
         for (let i = 0; i < order.fillIndex; i++) {
             let crossBox = crossBoxes(box, order.boxList[i])
             if (crossBox?.V) return false
-            if (crossBox && crossBox.segment3D(1)!.a == box.segment3D(1)!.b)
-                area += crossBox.segment3D(0)!.l * crossBox.segment3D(2)!.l
+            if (crossBox && crossBox.segment3D('y').a == box.segment3D('y').b)
+                area += crossBox.segment3D('x').l * crossBox.segment3D('z').l
         }
         // if box set on cell bottom
-        if (box.segment3D(2)?.b == this.cellBox.segment3D(2)?.b) return true
+        if (box.segment3D('y')?.b == this.cellBox.segment3D('y')?.b) return true
         // 70% as sufficient support
-        return area / (box.segment3D(0)!.l * box.segment3D(2)!.l) > 0.7;
+        return area / (box.segment3D('x').l * box.segment3D('z').l) > 0.7;
     }
 
     putFirst(order: Order) {
@@ -189,13 +201,12 @@ class Cell {
         do {
             for (let i = 0; i < 6; i++) {
                 box.rotateIndex = i
-                if (area < (box.base()?.area ?? 0)) {
-                    box.p = new Point(
-                        this.cellBox.segment3D(0)!.a,
-                        this.cellBox.segment3D(1)!.b - box.segment3D(1)!.l,
-                        this.cellBox.segment3D(2)!.a)
-                    if (!this.checkPlacing(box)) continue
-                    area = (box.base()?.area ?? 0)
+                if (area < box.base().area) {
+                    box.p = new Point(this.cellBox.segment3D('x').a + this.spaces,
+                        this.cellBox.segment3D('y').b - box.segment3D('y').l,
+                        this.cellBox.segment3D('z').a + this.spaces)
+                    if (!this.isBoxInside(box)) continue
+                    area = box.base().area
                     index = i
                 }
             }

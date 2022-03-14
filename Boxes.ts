@@ -69,16 +69,19 @@ class Box {
         return new Rect(x1, x2, y1, y2)
     }
 
-    isBaseOnBox(box: Box) {
-        if (box.segment3D(1)?.a !== this.segment3D(1)?.b) return false
-        return box.b.depth * box.b.width == this.b.depth * this.b.width
-    }
 
-    setAmbit() {
+    setAmbit(order: Order) {
         this.ambit = []
+        // levels of support for put box
+        let yList = []
+        for (let i = 0; i < order.fillIndex; i++) {
+            yList.push(order.boxList[i].segment3D(1)!.b)
+        }
         this.ambit.push(new Point(this.segment3D(0)!.a, this.segment3D(1)!.a, this.segment3D(2)!.a))
-        this.ambit.push(new Point(this.segment3D(0)!.b, this.segment3D(1)!.b, this.segment3D(2)!.a))
-        this.ambit.push(new Point(this.segment3D(0)!.a, this.segment3D(1)!.b, this.segment3D(2)!.b))
+        yList.forEach((y) => {
+            this.ambit.push(new Point(this.segment3D(0)!.b, y, this.segment3D(2)!.a))
+            this.ambit.push(new Point(this.segment3D(0)!.a, y, this.segment3D(2)!.b))
+        })
     }
 
     constructor(segments: Segment[] | WHD) {
@@ -143,36 +146,6 @@ class Order {
         this.sortByMaxArea()
     }
 
-    putFirst(cell: Cell) {
-        let area = 0
-        let index = -1
-        let box = this.boxList[0]
-        if (!box) return false
-        do {
-            for (let i = 0; i < 6; i++) {
-                box.rotateIndex = i
-                if (area < (box.base()?.area ?? 0)) {
-                    box.p = new Point(
-                        cell.cellBox.segment3D(0)!.a,
-                        cell.cellBox.segment3D(1)!.b - box.segment3D(1)!.l,
-                        cell.cellBox.segment3D(2)!.a)
-                    if (!cell.checkPlacing(box)) continue
-                    area = (box.base()?.area ?? 0)
-                    index = i
-                }
-            }
-            if (index < 0) {
-                let x = this.boxList.shift()
-                if (x) this.outsideCell.push(x)
-            }
-        } while (index < 0 && this.boxList.length)
-        if (index >= 0) {
-            this.fillIndex = 0
-            box.rotateIndex = index
-            return true
-        }
-        return false
-    }
 
     sortByMaxArea() {
         this.boxList.sort((a, b) => b.maxArea - a.maxArea)
@@ -186,18 +159,65 @@ class Order {
 
 class Cell {
     constructor(
-        public cellBox: Box) {
+        public cellBox: Box, spaces: number = 2) {
     }
 
     checkPlacing(box: Box) {
-        return cmpBox(box, crossBoxes(box, this.cellBox))
+        // if box wholly in cell
+        return crossBoxes(box, this.cellBox)?.V == box.V
     }
+
+    isBoxSet(box: Box, order: Order) {
+        let area = 0
+        for (let i = 0; i < order.fillIndex; i++) {
+            let crossBox = crossBoxes(box, order.boxList[i])
+            if (crossBox?.V) return false
+            if (crossBox && crossBox.segment3D(1)!.a == box.segment3D(1)!.b)
+                area += crossBox.segment3D(0)!.l * crossBox.segment3D(2)!.l
+        }
+        // if box set on cell bottom
+        if (box.segment3D(2)?.b == this.cellBox.segment3D(2)?.b) return true
+        // 70% as sufficient support
+        return area / (box.segment3D(0)!.l * box.segment3D(2)!.l) > 0.7;
+    }
+
+    putFirst(order: Order) {
+        let area = 0
+        let index = -1
+        let box = order.boxList[0]
+        if (!box) return false
+        do {
+            for (let i = 0; i < 6; i++) {
+                box.rotateIndex = i
+                if (area < (box.base()?.area ?? 0)) {
+                    box.p = new Point(
+                        this.cellBox.segment3D(0)!.a,
+                        this.cellBox.segment3D(1)!.b - box.segment3D(1)!.l,
+                        this.cellBox.segment3D(2)!.a)
+                    if (!this.checkPlacing(box)) continue
+                    area = (box.base()?.area ?? 0)
+                    index = i
+                }
+            }
+            if (index < 0) {
+                let x = order.boxList.shift()
+                if (x) order.outsideCell.push(x)
+            }
+        } while (index < 0 && order.boxList.length)
+        if (index >= 0) {
+            order.fillIndex = 1
+            box.rotateIndex = index
+            return true
+        }
+        return false
+    }
+
 }
 
 let b1 = new Box({width: 10, height: 15, depth: 22})
 let b2 = new Box({width: 10, height: 15, depth: 14})
-b1.p = new Point(0,0,0)
-b2.p = new Point(0,0,10)
+b1.p = new Point(0, 0, 0)
+b2.p = new Point(0, 0, 10)
 b1.rotateIndex = 1
 let cross = crossBoxes(b1, b2)
 console.log(cross)

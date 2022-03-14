@@ -47,6 +47,7 @@ type WHD = { width: number, height: number, depth: number }
 const dEnum: { [key in number | 'x' | 'y' | 'z']: number } = {"0": 0, "1": 1, "2": 2, "x": 0, "y": 1, "z": 2}
 
 class Box {
+    id?: number
     b: WHD
     p?: Point
     rotateIndex: number = 0 // 0..5
@@ -119,11 +120,13 @@ class Box {
 
     copy() {
         if (this.p) return new Box([this.segment3D(0), this.segment3D(1), this.segment3D(2)])
-        return new Box({
+        let box =  new Box({
             width: this.b.width,
             height: this.b.height,
             depth: this.b.depth
         })
+        box.id = this.id
+        return box
     }
 
     get V() {
@@ -290,11 +293,18 @@ class Cell {
 
 }
 
-let b1 = new Box({width: 10, height: 15, depth: 22})
-let b2 = new Box({width: 10, height: 15, depth: 14})
-b1.p = new Point(0, 0, 0)
-b2.p = new Point(0, 0, 10)
-b1.rotateIndex = 1
-let cross = crossBoxes(b1, b2)
-console.log(cross)
+function rand (m: number, n: number) {
+    return Math.trunc(m+ (n-m)*Math.random())
+}
+
+let cell = new Cell(new Box({width: 300, height: 300, depth: 400}))
+let order = new Order([])
+for (let i=0; i<5; i++) {
+    let box = new Box({
+        width: rand(10,150),height: rand(10,150), depth: rand(10,150)})
+    order.boxList.push(box)
+}
+cell.putFirst(order)
+cell.distribute(order)
+console.log(order)
 console.log()
